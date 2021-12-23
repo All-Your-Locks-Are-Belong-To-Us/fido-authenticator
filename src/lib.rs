@@ -747,6 +747,9 @@ where
                     retries: None,
                 }
             }
+            _ => {
+                unimplemented!()
+            }
         })
     }
 

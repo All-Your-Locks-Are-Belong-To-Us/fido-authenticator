@@ -16,7 +16,7 @@ serde = { version = "1.0", default-features = false }
 serde_cbor = { version = "0.11.0", default-features = false }
 serde-indexed = "0.1.0"
 
-ctap-types = { git = "https://github.com/solokeys/ctap-types", rev="98534ed1167a87dfb6f0a93ceab9c98980a8164d" }
+ctap-types = { git = "https://github.com/All-Your-Locks-Are-Belong-To-Us/ctap-types", rev="a622dcd19fce2e246d69c3a8aa36f4971471b235" }
 trussed = { git = "https://github.com/trussed-dev/trussed" }
 
 [features]
