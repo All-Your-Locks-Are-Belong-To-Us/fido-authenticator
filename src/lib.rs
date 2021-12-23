@@ -747,10 +747,8 @@ where
                     retries: None,
                 }
             }
-
             _ => {
-                // todo!("not implemented yet")
-                return Err(Error::InvalidParameter);
+                unimplemented!()
             }
         })
     }
