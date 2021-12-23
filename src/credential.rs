@@ -1,25 +1,19 @@
 use core::convert::{TryFrom, TryInto};
 
-use trussed::{
-    client, syscall, try_syscall,
-    types::KeyId,
-};
+use trussed::{client, syscall, try_syscall, types::KeyId};
 
 pub(crate) use ctap_types::{
-    Bytes, Bytes32, String, Vec,
     // authenticator::{ctap1, ctap2, Error, Request, Response},
     ctap2::credential_management::CredentialProtectionPolicy,
     sizes::*,
     webauthn::PublicKeyCredentialDescriptor,
+    Bytes,
+    Bytes32,
+    String,
+    Vec,
 };
 
-use crate::{
-    Authenticator,
-    Error,
-    Result,
-    UserPresence,
-};
-
+use crate::{Authenticator, Error, Result, UserPresence};
 
 #[derive(Copy, Clone, Debug, serde::Deserialize, serde::Serialize)]
 // #[derive(Copy, Clone, Debug, serde_indexed::DeserializeIndexed, serde_indexed::SerializeIndexed)]
@@ -44,7 +38,9 @@ impl TryFrom<EncryptedSerializedCredential> for CredentialId {
     type Error = Error;
 
     fn try_from(esc: EncryptedSerializedCredential) -> Result<CredentialId> {
-        Ok(CredentialId(trussed::cbor_serialize_bytes(&esc.0).map_err(|_| Error::Other)?))
+        Ok(CredentialId(
+            trussed::cbor_serialize_bytes(&esc.0).map_err(|_| Error::Other)?,
+        ))
     }
 }
 
@@ -55,7 +51,7 @@ impl TryFrom<CredentialId> for EncryptedSerializedCredential {
 
     fn try_from(cid: CredentialId) -> Result<EncryptedSerializedCredential> {
         let encrypted_serialized_credential = EncryptedSerializedCredential(
-            ctap_types::serde::cbor_deserialize(&cid.0).map_err(|_| Error::InvalidCredential)?
+            ctap_types::serde::cbor_deserialize(&cid.0).map_err(|_| Error::InvalidCredential)?,
         );
         Ok(encrypted_serialized_credential)
     }
@@ -91,7 +87,6 @@ pub struct CredentialData {
     // extensions
     pub hmac_secret: Option<bool>,
     pub cred_protect: Option<CredentialProtectionPolicy>,
-
     // TODO: add `sig_counter: Option<CounterId>`,
     // and grant RKs a per-credential sig-counter.
 }
@@ -114,7 +109,7 @@ impl core::ops::Deref for Credential {
     }
 }
 
-pub type CredentialList = Vec<Credential, {ctap_types::sizes::MAX_CREDENTIAL_COUNT_IN_LIST}>;
+pub type CredentialList = Vec<Credential, { ctap_types::sizes::MAX_CREDENTIAL_COUNT_IN_LIST }>;
 
 impl Into<PublicKeyCredentialDescriptor> for CredentialId {
     fn into(self) -> PublicKeyCredentialDescriptor {
@@ -124,7 +119,7 @@ impl Into<PublicKeyCredentialDescriptor> for CredentialId {
                 let mut key_type = String::new();
                 key_type.push_str("public-key").unwrap();
                 key_type
-            }
+            },
         }
     }
 }
@@ -141,9 +136,7 @@ impl Credential {
         hmac_secret: Option<bool>,
         cred_protect: Option<CredentialProtectionPolicy>,
         nonce: [u8; 12],
-    )
-        -> Self
-    {
+    ) -> Self {
         info!("credential for algorithm {}", algorithm);
         let data = CredentialData {
             rp: rp.clone(),
@@ -170,17 +163,14 @@ impl Credential {
         crypto: &mut T,
         key_encryption_key: KeyId,
         rp_id_hash: &Bytes32,
-    )
-        -> Result<CredentialId>
-    {
+    ) -> Result<CredentialId> {
         let serialized_credential = self.serialize()?;
         let message = &serialized_credential;
 
         let associated_data = &rp_id_hash[..];
         let nonce: [u8; 12] = self.nonce.as_slice().try_into().unwrap();
-        let encrypted_serialized_credential = EncryptedSerializedCredential(
-            syscall!(crypto.encrypt_chacha8poly1305(
-                    key_encryption_key, message, associated_data, Some(&nonce))));
+        let encrypted_serialized_credential = EncryptedSerializedCredential(syscall!(crypto
+            .encrypt_chacha8poly1305(key_encryption_key, message, associated_data, Some(&nonce))));
         let credential_id: CredentialId = encrypted_serialized_credential.try_into().unwrap();
 
         Ok(credential_id)
@@ -190,22 +180,20 @@ impl Credential {
         &self,
         trussed: &mut T,
         key_encryption_key: KeyId,
-    )
-        -> Result<CredentialId>
-    {
+    ) -> Result<CredentialId> {
         let serialized_credential = self.serialize()?;
         let message = &serialized_credential;
         // info!("ser cred = {:?}", message).ok();
 
         let rp_id_hash: Bytes32 = syscall!(trussed.hash_sha256(&self.rp.id.as_ref()))
             .hash
-            .to_bytes().map_err(|_| Error::Other)?;
+            .to_bytes()
+            .map_err(|_| Error::Other)?;
 
         let associated_data = &rp_id_hash[..];
         let nonce: [u8; 12] = self.nonce.as_slice().try_into().unwrap();
-        let encrypted_serialized_credential = EncryptedSerializedCredential(
-            syscall!(trussed.encrypt_chacha8poly1305(
-                    key_encryption_key, message, associated_data, Some(&nonce))));
+        let encrypted_serialized_credential = EncryptedSerializedCredential(syscall!(trussed
+            .encrypt_chacha8poly1305(key_encryption_key, message, associated_data, Some(&nonce))));
         let credential_id: CredentialId = encrypted_serialized_credential.try_into().unwrap();
 
         Ok(credential_id)
@@ -226,12 +214,10 @@ impl Credential {
     }
 
     pub fn try_from<UP: UserPresence, T: client::Client + client::Chacha8Poly1305>(
-        authnr: &mut Authenticator<UP,T>,
+        authnr: &mut Authenticator<UP, T>,
         rp_id_hash: &Bytes<32>,
         descriptor: &PublicKeyCredentialDescriptor,
-    )
-        -> Result<Self>
-    {
+    ) -> Result<Self> {
         Self::try_from_bytes(authnr, rp_id_hash, &descriptor.id)
     }
 
@@ -239,18 +225,17 @@ impl Credential {
         authnr: &mut Authenticator<UP, T>,
         rp_id_hash: &Bytes<32>,
         id: &[u8],
-    )
-        -> Result<Self>
-    {
-
+    ) -> Result<Self> {
         let mut cred: Bytes<MAX_CREDENTIAL_ID_LENGTH> = Bytes::new();
-        cred.extend_from_slice(id).map_err(|_| Error::InvalidCredential)?;
+        cred.extend_from_slice(id)
+            .map_err(|_| Error::InvalidCredential)?;
 
-        let encrypted_serialized = EncryptedSerializedCredential::try_from(
-            CredentialId(cred)
-        )?;
+        let encrypted_serialized = EncryptedSerializedCredential::try_from(CredentialId(cred))?;
 
-        let kek = authnr.state.persistent.key_encryption_key(&mut authnr.trussed)?;
+        let kek = authnr
+            .state
+            .persistent
+            .key_encryption_key(&mut authnr.trussed)?;
 
         let serialized = try_syscall!(authnr.trussed.decrypt_chacha8poly1305(
             // TODO: use RpId as associated data here?
@@ -260,11 +245,12 @@ impl Credential {
             &encrypted_serialized.0.nonce,
             &encrypted_serialized.0.tag,
         ))
-            .map_err(|_| Error::InvalidCredential)?.plaintext
-            .ok_or(Error::InvalidCredential)?;
+        .map_err(|_| Error::InvalidCredential)?
+        .plaintext
+        .ok_or(Error::InvalidCredential)?;
 
-        let credential = Credential::deserialize(&serialized)
-            .map_err(|_| Error::InvalidCredential)?;
+        let credential =
+            Credential::deserialize(&serialized).map_err(|_| Error::InvalidCredential)?;
 
         Ok(credential)
     }
