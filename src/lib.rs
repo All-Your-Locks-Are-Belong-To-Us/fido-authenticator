@@ -2253,7 +2253,7 @@ where
 
     fn get_info(&mut self) -> ctap2::get_info::Response {
         use core::str::FromStr;
-        let mut versions = Vec::<String<12>, 4>::new();
+        let mut versions = Vec::new();
         versions.push(String::from_str("U2F_V2").unwrap()).unwrap();
         versions
             .push(String::from_str("FIDO_2_0").unwrap())
@@ -2261,7 +2261,7 @@ where
         // #[cfg(feature = "enable-fido-pre")]
         // versions.push(String::from_str("FIDO_2_1_PRE").unwrap()).unwrap();
 
-        let mut extensions = Vec::<String<11>, 4>::new();
+        let mut extensions = Vec::new();
         // extensions.push(String::from_str("credProtect").unwrap()).unwrap();
         extensions
             .push(String::from_str("credProtect").unwrap())
