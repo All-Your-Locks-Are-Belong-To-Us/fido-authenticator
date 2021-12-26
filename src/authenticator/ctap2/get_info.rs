@@ -21,6 +21,10 @@ where
         versions
             .push(String::from_str("FIDO_2_0").unwrap())
             .unwrap();
+        #[cfg(feature = "enable-fido-2-1-pre")]
+        versions
+            .push(String::from_str("FIDO_2_1_PRE").unwrap())
+            .unwrap();
 
         let mut extensions = Vec::new();
         // extensions.push(String::from_str("credProtect").unwrap()).unwrap();
@@ -45,6 +49,10 @@ where
             true => Some(true),
             false => Some(false),
         };
+        #[cfg(feature = "enable-fido-2-1-pre")]
+        {
+            options.large_blobs = Some(true);
+        }
 
         let (_, aaguid) = self.state.identity.attestation(&mut self.trussed);
 
