@@ -1,9 +1,6 @@
 use core::convert::{TryFrom, TryInto};
 
-use trussed::{client, syscall, try_syscall, types::KeyId};
-
 pub(crate) use ctap_types::{
-    // authenticator::{ctap1, ctap2, Error, Request, Response},
     ctap2::credential_management::CredentialProtectionPolicy,
     sizes::*,
     webauthn::PublicKeyCredentialDescriptor,
@@ -12,6 +9,7 @@ pub(crate) use ctap_types::{
     String,
     Vec,
 };
+use trussed::{client, syscall, try_syscall, types::KeyId};
 
 use crate::{Authenticator, Error, Result, UserPresence};
 
@@ -109,6 +107,7 @@ impl core::ops::Deref for Credential {
     }
 }
 
+/// A list of credentials.
 pub type CredentialList = Vec<Credential, { ctap_types::sizes::MAX_CREDENTIAL_COUNT_IN_LIST }>;
 
 impl Into<PublicKeyCredentialDescriptor> for CredentialId {
@@ -144,7 +143,7 @@ impl Credential {
 
             creation_time: timestamp,
             use_counter: true,
-            algorithm: algorithm,
+            algorithm,
             key,
 
             hmac_secret,
@@ -158,7 +157,7 @@ impl Credential {
         }
     }
 
-    pub fn id_using_hash<'a, T: client::Chacha8Poly1305>(
+    pub fn id_using_hash<T: client::Chacha8Poly1305>(
         &self,
         crypto: &mut T,
         key_encryption_key: KeyId,
@@ -176,7 +175,7 @@ impl Credential {
         Ok(credential_id)
     }
 
-    pub fn id<'a, T: client::Chacha8Poly1305 + client::Sha256>(
+    pub fn id<T: client::Chacha8Poly1305 + client::Sha256>(
         &self,
         trussed: &mut T,
         key_encryption_key: KeyId,
@@ -185,7 +184,7 @@ impl Credential {
         let message = &serialized_credential;
         // info!("ser cred = {:?}", message).ok();
 
-        let rp_id_hash: Bytes32 = syscall!(trussed.hash_sha256(&self.rp.id.as_ref()))
+        let rp_id_hash: Bytes32 = syscall!(trussed.hash_sha256(self.rp.id.as_ref()))
             .hash
             .to_bytes()
             .map_err(|_| Error::Other)?;

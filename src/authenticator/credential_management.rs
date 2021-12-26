@@ -2,11 +2,6 @@
 
 use core::convert::TryFrom;
 
-use trussed::{
-    client, syscall,
-    types::{DirEntry, Location},
-};
-
 use ctap_types::{
     authenticator::{
         ctap2::{
@@ -19,13 +14,19 @@ use ctap_types::{
     webauthn::PublicKeyCredentialDescriptor,
     Bytes32,
 };
-
 use littlefs2::path::{Path, PathBuf};
+use trussed::{
+    client,
+    syscall,
+    types::{DirEntry, Location},
+};
 
+use super::credential::Credential;
 use crate::{
-    credential::Credential,
     state::{CredentialManagementEnumerateCredentials, CredentialManagementEnumerateRps},
-    Authenticator, Result, UserPresence,
+    Authenticator,
+    Result,
+    UserPresence,
 };
 
 pub struct CredentialManagement<'a, UP, T>
@@ -41,7 +42,7 @@ where
 {
     type Target = Authenticator<UP, T>;
     fn deref(&self) -> &Self::Target {
-        &self.authnr
+        self.authnr
     }
 }
 
@@ -50,7 +51,7 @@ where
     UP: UserPresence,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.authnr
+        self.authnr
     }
 }
 
@@ -181,7 +182,7 @@ where
 
                     let rp = credential.data.rp;
 
-                    response.rp_id_hash = Some(self.hash(&rp.id.as_ref()));
+                    response.rp_id_hash = Some(self.hash(rp.id.as_ref()));
                     response.rp = Some(rp);
                 }
             }
@@ -253,7 +254,7 @@ where
 
                     let rp = credential.data.rp;
 
-                    response.rp_id_hash = Some(self.hash(&rp.id.as_ref()));
+                    response.rp_id_hash = Some(self.hash(rp.id.as_ref()));
                     response.rp = Some(rp);
 
                     // cache state for next call
@@ -397,14 +398,15 @@ where
         let credential_id = credential.id(&mut self.trussed, kek)?;
         response.credential_id = Some(credential_id.into());
 
-        use crate::credential::Key;
+        use super::credential::Key;
         let private_key = match credential.key {
             Key::ResidentKey(key) => key,
             _ => return Err(Error::InvalidCredential),
         };
 
-        use crate::SupportedAlgorithm;
         use trussed::types::{KeySerialization, Mechanism};
+
+        use crate::authenticator::SupportedAlgorithm;
 
         let algorithm = SupportedAlgorithm::try_from(credential.algorithm)?;
         let cose_public_key = match algorithm {
@@ -415,7 +417,7 @@ where
                 .key;
                 let cose_public_key = syscall!(self.trussed.serialize_key(
                     Mechanism::P256,
-                    public_key.clone(),
+                    public_key,
                     // KeySerialization::EcdhEsHkdf256
                     KeySerialization::Cose,
                 ))
@@ -459,12 +461,11 @@ where
         let dir = PathBuf::from(b"rk");
         let filename = PathBuf::from(&hex);
 
-        let rk_path =
-            syscall!(self
-                .trussed
-                .locate_file(Location::Internal, Some(dir.clone()), filename,))
-            .path
-            .ok_or(Error::InvalidCredential)?;
+        let rk_path = syscall!(self
+            .trussed
+            .locate_file(Location::Internal, Some(dir), filename,))
+        .path
+        .ok_or(Error::InvalidCredential)?;
 
         // DELETE
         self.delete_resident_key_by_path(&rk_path)?;

@@ -3,20 +3,20 @@ use core::cmp::Ordering;
 use ctap_types::{
     authenticator::Error,
     cose::EcdhEsHkdf256PublicKey as CoseEcdhEsHkdf256PublicKey,
-    sizes::MAX_CREDENTIAL_COUNT_IN_LIST, // U8 currently
+    sizes::MAX_CREDENTIAL_COUNT_IN_LIST,
     Bytes32,
 };
+use heapless::binary_heap::{BinaryHeap, Max, Min};
+use littlefs2::path::PathBuf;
 use trussed::{
-    client, syscall, try_syscall,
+    client,
+    syscall,
+    try_syscall,
     types::{self, KeyId, Location, Mechanism},
     Client as TrussedClient,
 };
 
-use heapless::binary_heap::{BinaryHeap, Max, Min};
-use littlefs2::path::PathBuf;
-
-use crate::cbor_serialize_message;
-use crate::Result;
+use crate::{authenticator::Credential, constants, utils::cbor_serialize_message, Result};
 
 pub type MaxCredentialHeap = BinaryHeap<TimestampPath, Max, MAX_CREDENTIAL_COUNT_IN_LIST>;
 pub type MinCredentialHeap = BinaryHeap<TimestampPath, Min, MAX_CREDENTIAL_COUNT_IN_LIST>;
@@ -68,6 +68,12 @@ impl State {
     }
 }
 
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Identity {
     // can this be [u8; 16] or need Bytes for serialization?
@@ -105,9 +111,7 @@ impl Identity {
         cert_reader = &cert_reader[aaguid_start_sequence.len()..];
 
         let mut aaguid = [0u8; 16];
-        for i in 0..16 {
-            aaguid[i] = cert_reader[i]
-        }
+        aaguid[..16].clone_from_slice(&cert_reader[..16]);
         Some(aaguid)
     }
 
@@ -115,14 +119,13 @@ impl Identity {
         &mut self,
         trussed: &mut T,
     ) -> (Option<(KeyId, Certificate)>, Aaguid) {
-        let key = crate::constants::ATTESTATION_KEY_ID;
+        let key = constants::ATTESTATION_KEY_ID;
         let attestation_key_exists = syscall!(trussed.exists(Mechanism::P256, key)).exists;
         if attestation_key_exists {
             // Will panic if certificate does not exist.
-            let cert =
-                syscall!(trussed.read_certificate(crate::constants::ATTESTATION_CERT_ID)).der;
+            let cert = syscall!(trussed.read_certificate(constants::ATTESTATION_CERT_ID)).der;
 
-            let mut aaguid = self.yank_aaguid(&cert.as_slice());
+            let mut aaguid = self.yank_aaguid(cert.as_slice());
 
             if aaguid.is_none() {
                 // Provide a default
@@ -236,13 +239,11 @@ impl PersistentState {
             return Err(Error::Other);
         }
 
-        let previous_state = result.map_err(|_| Error::Other);
-
-        previous_state
+        result.map_err(|_| Error::Other)
     }
 
     pub fn save<T: TrussedClient>(&self, trussed: &mut T) -> Result<()> {
-        let data = crate::cbor_serialize_message(self).unwrap();
+        let data = crate::utils::cbor_serialize_message(self).unwrap();
 
         syscall!(trussed.write_file(
             Location::Internal,
@@ -422,10 +423,10 @@ impl RuntimeState {
         self.credentials.as_mut().unwrap()
     }
 
-    pub fn free_credential_heap<T: client::FilesystemClient>(&mut self, trussed: &mut T) -> () {
+    pub fn free_credential_heap<T: client::FilesystemClient>(&mut self, trussed: &mut T) {
         if self.credentials.is_some() {
             let max_heap = self.credential_heap();
-            while max_heap.len() > 0 {
+            while !max_heap.is_empty() {
                 let timestamp_path = max_heap.pop().unwrap();
                 // Only assume that runtime credentials are still valid.
                 if timestamp_path.location == Location::Volatile {
@@ -438,7 +439,7 @@ impl RuntimeState {
     pub fn pop_credential_from_heap<T: client::FilesystemClient>(
         &mut self,
         trussed: &mut T,
-    ) -> crate::Credential {
+    ) -> Credential {
         let max_heap = self.credential_heap();
         let timestamp_hash = max_heap.pop().unwrap();
         info!(
@@ -451,7 +452,7 @@ impl RuntimeState {
         if timestamp_hash.location == Location::Volatile {
             syscall!(trussed.remove_file(timestamp_hash.location, timestamp_hash.path,));
         }
-        crate::Credential::deserialize(&data).unwrap()
+        Credential::deserialize(&data).unwrap()
     }
 
     pub fn key_agreement_key<T: client::P256>(&mut self, trussed: &mut T) -> KeyId {
