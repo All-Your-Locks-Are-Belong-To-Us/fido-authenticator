@@ -18,6 +18,9 @@ mod make_credential;
 mod reset;
 mod vendor;
 
+#[cfg(feature = "enable-fido-2-1-pre")]
+mod large_blobs;
+
 impl<UP, T> Authenticator<UP, T>
 where
     UP: UserPresence,
@@ -118,6 +121,27 @@ where
                                 )))
                             }
                             Err(error) => Err(error),
+                        }
+                    }
+
+                    // 0xC
+                    ctap2::Request::LargeBlobs(parameters) => {
+                        #[cfg(feature = "enable-fido-2-1-pre")]
+                        {
+                            debug!("LargeBlobs request");
+                            let response = self.large_blobs(parameters);
+                            match response {
+                                Ok(response) => {
+                                    Ok(Response::Ctap2(ctap2::Response::LargeBlobs(response)))
+                                }
+                                Err(error) => Err(error),
+                            }
+                        }
+                        #[cfg(not(feature = "enable-fido-2-1-pre"))]
+                        {
+                            // to silence clippy.
+                            let _parameters = parameters;
+                            Err(Error::InvalidCommand)
                         }
                     }
 
