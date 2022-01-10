@@ -4,6 +4,7 @@ use ctap_types::{
     authenticator::Error,
     cose::EcdhEsHkdf256PublicKey as CoseEcdhEsHkdf256PublicKey,
     sizes::MAX_CREDENTIAL_COUNT_IN_LIST,
+    Bytes,
     Bytes32,
 };
 use heapless::binary_heap::{BinaryHeap, Max, Min};
@@ -158,6 +159,13 @@ pub struct ActiveGetAssertionData {
     pub extensions: Option<ctap_types::ctap2::get_assertion::ExtensionsInput>,
 }
 
+#[cfg(feature = "enable-fido-2-1-pre")]
+/// The maximum number of bytes that this authenticator can store in its large blob array.
+/// The minimum number is 1024 bytes, we chose 16 KiB arbitrarily.
+pub const MAX_SERIALIZED_LARGE_BLOB_ARRAY: usize = 1024;
+#[cfg(feature = "enable-fido-2-1-pre")]
+pub type LargeBlob = Bytes<MAX_SERIALIZED_LARGE_BLOB_ARRAY>;
+
 #[derive(
     Clone, Debug, /*uDebug,*/ Default, /*PartialEq,*/ serde::Deserialize, serde::Serialize,
 )]
@@ -174,6 +182,13 @@ pub struct RuntimeState {
     channel: Option<u32>,
     pub cache_rp: Option<CredentialManagementEnumerateRps>,
     pub cache_rk: Option<CredentialManagementEnumerateCredentials>,
+
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub large_blob_expected_length: usize,
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub large_blob_expected_next_offset: u32,
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub large_blob_buffer: LargeBlob,
 }
 
 // TODO: Plan towards future extensibility
@@ -207,12 +222,25 @@ pub struct PersistentState {
     // TODO: Add per-key counters for resident keys.
     // counter: Option<CounterId>,
     timestamp: u32,
+
+    // seems like we break some stuff here, as the Solo won't boot up properly :(
+    // DON'T FLASH IT IN THIS STATE
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    large_blob_buffer: Option<LargeBlob>,
 }
 
 impl PersistentState {
     const RESET_RETRIES: u8 = 8;
     const FILENAME: &'static [u8] = b"persistent-state.cbor";
     const MAX_RESIDENT_CREDENTIALS_GUESSTIMATE: u32 = 100;
+
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    /// The initial serialized large blob array as defined by the FIDO standard 2.1
+    /// https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorLargeBlobs
+    const INITIAL_SERIALIZED_LARGE_BLOB_ARRAY: [u8; 17] = [
+        0x80u8, 0x76, 0xbe, 0x8b, 0x52, 0x8d, 0x00, 0x75, 0xf7, 0xaa, 0xe9, 0x8d, 0x6f, 0xa5, 0x7a,
+        0x6d, 0x3c,
+    ];
 
     pub fn max_resident_credentials_guesstimate(&self) -> u32 {
         Self::MAX_RESIDENT_CREDENTIALS_GUESSTIMATE
@@ -266,6 +294,10 @@ impl PersistentState {
         self.consecutive_pin_mismatches = 0;
         self.pin_hash = None;
         self.timestamp = 0;
+        #[cfg(feature = "enable-fido-2-1-pre")]
+        {
+            self.large_blob_buffer = None;
+        }
         self.save(trussed)
     }
 
@@ -383,6 +415,32 @@ impl PersistentState {
         pin_hash: [u8; 16],
     ) -> Result<()> {
         self.pin_hash = Some(pin_hash);
+        self.save(trussed)?;
+        Ok(())
+    }
+
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub fn large_blob(&self) -> &[u8] {
+        match &self.large_blob_buffer {
+            Some(large_blob_buffer) => large_blob_buffer.as_slice(),
+            None => &Self::INITIAL_SERIALIZED_LARGE_BLOB_ARRAY,
+        }
+    }
+
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub fn set_large_blob<T: TrussedClient>(
+        &mut self,
+        trussed: &mut T,
+        large_blob: &LargeBlob,
+    ) -> Result<()> {
+        if let Some(large_blob_buffer) = &mut self.large_blob_buffer {
+            large_blob_buffer.clear();
+        } else {
+            self.large_blob_buffer = Some(LargeBlob::new());
+        }
+        let buffer = self.large_blob_buffer.as_deref_mut().unwrap();
+        buffer.extend_from_slice(large_blob).unwrap();
+
         self.save(trussed)?;
         Ok(())
     }
