@@ -36,6 +36,12 @@ where
         extensions
             .push(String::from_str("hmac-secret").unwrap())
             .unwrap();
+        #[cfg(feature = "enable-fido-2-1-pre")]
+        {
+            extensions
+                .push(String::from_str("largeBlobKey").unwrap())
+                .unwrap();
+        }
 
         let mut pin_protocols = Vec::<u8, 1>::new();
         pin_protocols.push(1).unwrap();

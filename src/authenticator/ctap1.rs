@@ -119,6 +119,8 @@ where
                         .map_err(|_| U2fError::NotEnoughMemory)?,
                     None,
                     None,
+                    #[cfg(feature = "enable-fido-2-1-pre")]
+                    None,
                     nonce,
                 );
 

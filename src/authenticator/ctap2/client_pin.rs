@@ -5,12 +5,15 @@ use ctap_types::{
     Bytes,
 };
 use trussed::{
-    client, syscall,
+    client,
+    syscall,
     types::{KeyId, KeySerialization, Location, Mechanism, MediumData, Message},
 };
 
-use crate::authenticator::{Authenticator, UserPresence};
-use crate::Result;
+use crate::{
+    authenticator::{Authenticator, UserPresence},
+    Result,
+};
 
 impl<UP, T> Authenticator<UP, T>
 where

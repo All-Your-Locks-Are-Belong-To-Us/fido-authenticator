@@ -1,14 +1,21 @@
 use ctap_types::{
     authenticator::{ctap2, Error},
-    Bytes, Bytes32,
+    Bytes,
+    Bytes32,
 };
 use littlefs2::path::{Path, PathBuf};
 use trussed::{client, syscall, types::Location};
 
 use super::rp_rk_dir;
-use crate::authenticator::credential::{Credential, Key};
-use crate::authenticator::{credential_management, Authenticator, UserPresence};
-use crate::Result;
+use crate::{
+    authenticator::{
+        credential::{Credential, Key},
+        credential_management,
+        Authenticator,
+        UserPresence,
+    },
+    Result,
+};
 
 impl<UP, T> Authenticator<UP, T>
 where

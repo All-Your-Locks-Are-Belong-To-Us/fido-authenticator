@@ -1,23 +1,31 @@
-use ctap_types::authenticator::{ctap2, Error};
-use trussed::{client, syscall, types::SignatureSerialization};
-
-use crate::authenticator::{Authenticator, Credential, UserPresence};
-use crate::{constants, state, Result};
-
-use super::{rk_path, rp_rk_dir};
 use core::convert::TryInto;
 
-use ctap_types::{Bytes, Bytes32};
+use ctap_types::{
+    authenticator::{ctap2, Error},
+    Bytes,
+    Bytes32,
+};
 use littlefs2::path::PathBuf;
 use trussed::{
+    client,
+    syscall,
     try_syscall,
-    types::{KeyId, Location, Mechanism},
+    types::{KeyId, Location, Mechanism, SignatureSerialization},
 };
 
-use crate::authenticator::credential::{CredentialList, CredentialProtectionPolicy, Key};
+use super::{rk_path, rp_rk_dir};
 use crate::{
+    authenticator::{
+        credential::{CredentialList, CredentialProtectionPolicy, Key},
+        Authenticator,
+        Credential,
+        UserPresence,
+    },
+    constants,
+    state,
     state::{MinCredentialHeap, TimestampPath},
     utils::format_hex,
+    Result,
 };
 
 impl<UP, T> Authenticator<UP, T>
@@ -185,11 +193,23 @@ where
         };
 
         // 8. process any extensions present
-        let extensions_output = if let Some(extensions) = &data.extensions {
-            self.process_assertion_extensions(&data, extensions, &credential, key)?
-        } else {
-            None
-        };
+        let mut extensions_output = None;
+        #[cfg(feature = "enable-fido-2-1-pre")]
+        let mut large_blob_key_output = None;
+        if let Some(extensions) = &data.extensions {
+            extensions_output =
+                self.process_assertion_extensions(&data, extensions, &credential, key)?;
+
+            // Yes, the largeBlobKey is an extension. And yes, the output is not stored in the extension output field :))
+            // Hence, we process the largeBlobKeyExtension separately. We could instead return the largeBlobKey as a second return value
+            // from the process_assertion_extensions. However, we thought this is not a good design.
+            // See https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#sctn-largeBlobKey-extension
+            #[cfg(feature = "enable-fido-2-1-pre")]
+            {
+                large_blob_key_output =
+                    self.process_large_blob_key_extension(extensions, &credential)?;
+            }
+        }
 
         // 9./10. sign clientDataHash || authData with "first" credential
 
@@ -273,6 +293,12 @@ where
             signature,
             user: None,
             number_of_credentials: num_credentials,
+            // TODO: implement
+            user_selected: None,
+            #[cfg(not(feature = "enable-fido-2-1-pre"))]
+            large_blob_key: None,
+            #[cfg(feature = "enable-fido-2-1-pre")]
+            large_blob_key: large_blob_key_output,
         };
 
         if is_rk {
@@ -299,79 +325,107 @@ where
         _credential: &Credential,
         credential_key: KeyId,
     ) -> Result<Option<ctap2::get_assertion::ExtensionsOutput>> {
-        if let Some(hmac_secret) = &extensions.hmac_secret {
-            if let Some(pin_protocol) = hmac_secret.pin_protocol {
-                if pin_protocol != 1 {
-                    return Err(Error::InvalidParameter);
+        let hmac_secret_output = match &extensions.hmac_secret {
+            Some(hmac_secret) => {
+                if let Some(pin_protocol) = hmac_secret.pin_protocol {
+                    if pin_protocol != 1 {
+                        return Err(Error::InvalidParameter);
+                    }
                 }
-            }
 
-            // We derive credRandom as an hmac of the existing private key.
-            // UV is used as input data since credRandom should depend UV
-            // i.e. credRandom = HMAC(private_key, uv)
-            let cred_random = syscall!(self.trussed.derive_key(
-                Mechanism::HmacSha256,
-                credential_key,
-                Some(Bytes::from_slice(&[get_assertion_state.uv_performed as u8]).unwrap()),
-                trussed::types::StorageAttributes::new().set_persistence(Location::Volatile)
-            ))
-            .key;
+                // We derive credRandom as an hmac of the existing private key.
+                // UV is used as input data since credRandom should depend UV
+                // i.e. credRandom = HMAC(private_key, uv)
+                let cred_random = syscall!(self.trussed.derive_key(
+                    Mechanism::HmacSha256,
+                    credential_key,
+                    Some(Bytes::from_slice(&[get_assertion_state.uv_performed as u8]).unwrap()),
+                    trussed::types::StorageAttributes::new().set_persistence(Location::Volatile)
+                ))
+                .key;
 
-            // Verify the auth tag, which uses the same process as the pinAuth
-            let kek = self
-                .state
-                .runtime
-                .generate_shared_secret(&mut self.trussed, &hmac_secret.key_agreement)?;
-            self.verify_pin_auth(kek, &hmac_secret.salt_enc, &hmac_secret.salt_auth)
-                .map_err(|_| Error::ExtensionFirst)?;
+                // Verify the auth tag, which uses the same process as the pinAuth
+                let kek = self
+                    .state
+                    .runtime
+                    .generate_shared_secret(&mut self.trussed, &hmac_secret.key_agreement)?;
+                self.verify_pin_auth(kek, &hmac_secret.salt_enc, &hmac_secret.salt_auth)
+                    .map_err(|_| Error::ExtensionFirst)?;
 
-            if hmac_secret.salt_enc.len() != 32 && hmac_secret.salt_enc.len() != 64 {
-                return Err(Error::InvalidLength);
-            }
+                if hmac_secret.salt_enc.len() != 32 && hmac_secret.salt_enc.len() != 64 {
+                    return Err(Error::InvalidLength);
+                }
 
-            // decrypt input salt_enc to get salt1 or (salt1 || salt2)
-            let salts = syscall!(self.trussed.decrypt(
-                Mechanism::Aes256Cbc,
-                kek,
-                &hmac_secret.salt_enc,
-                b"",
-                b"",
-                b""
-            ))
-            .plaintext
-            .ok_or(Error::InvalidOption)?;
+                // decrypt input salt_enc to get salt1 or (salt1 || salt2)
+                let salts = syscall!(self.trussed.decrypt(
+                    Mechanism::Aes256Cbc,
+                    kek,
+                    &hmac_secret.salt_enc,
+                    b"",
+                    b"",
+                    b""
+                ))
+                .plaintext
+                .ok_or(Error::InvalidOption)?;
 
-            let mut salt_output: Bytes<64> = Bytes::new();
+                let mut salt_output: Bytes<64> = Bytes::new();
 
-            // output1 = hmac_sha256(credRandom, salt1)
-            let output1 =
-                syscall!(self.trussed.sign_hmacsha256(cred_random, &salts[0..32])).signature;
+                // output1 = hmac_sha256(credRandom, salt1)
+                let output1 =
+                    syscall!(self.trussed.sign_hmacsha256(cred_random, &salts[0..32])).signature;
 
-            salt_output.extend_from_slice(&output1).unwrap();
+                salt_output.extend_from_slice(&output1).unwrap();
 
-            if salts.len() == 64 {
-                // output2 = hmac_sha256(credRandom, salt2)
-                let output2 =
-                    syscall!(self.trussed.sign_hmacsha256(cred_random, &salts[32..64])).signature;
+                if salts.len() == 64 {
+                    // output2 = hmac_sha256(credRandom, salt2)
+                    let output2 =
+                        syscall!(self.trussed.sign_hmacsha256(cred_random, &salts[32..64]))
+                            .signature;
 
-                salt_output.extend_from_slice(&output2).unwrap();
-            }
+                    salt_output.extend_from_slice(&output2).unwrap();
+                }
 
-            syscall!(self.trussed.delete(cred_random));
+                syscall!(self.trussed.delete(cred_random));
 
-            // output_enc = aes256-cbc(sharedSecret, IV=0, output1 || output2)
-            let output_enc =
-                syscall!(self
-                    .trussed
-                    .encrypt(Mechanism::Aes256Cbc, kek, &salt_output, b"", None))
+                // output_enc = aes256-cbc(sharedSecret, IV=0, output1 || output2)
+                let output_enc = syscall!(self.trussed.encrypt(
+                    Mechanism::Aes256Cbc,
+                    kek,
+                    &salt_output,
+                    b"",
+                    None
+                ))
                 .ciphertext;
 
+                Some(Bytes::from_slice(&output_enc).unwrap())
+            }
+            None => None,
+        };
+        if hmac_secret_output.is_some() {
             Ok(Some(ctap2::get_assertion::ExtensionsOutput {
-                hmac_secret: Some(Bytes::from_slice(&output_enc).unwrap()),
+                hmac_secret: hmac_secret_output,
             }))
         } else {
             Ok(None)
         }
+    }
+
+    #[inline(never)]
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    fn process_large_blob_key_extension(
+        &mut self,
+        extensions: &ctap2::get_assertion::ExtensionsInput,
+        credential: &Credential,
+    ) -> Result<Option<Bytes32>> {
+        return match &extensions.large_blob_key {
+            Some(true) => Ok(self.derive_large_blob_key(credential)?),
+            Some(false) => {
+                // See https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#sctn-largeBlobKey-extension
+                // Authenticator authenticatorGetAssertion extension processing 1.
+                return Err(Error::InvalidOption);
+            }
+            None => Ok(None),
+        };
     }
 
     /// If allow_list is some, select the first one that is usable,

@@ -2,8 +2,11 @@ use ctap_types::authenticator::Error;
 use littlefs2::path::PathBuf;
 use trussed::{client, syscall, types::Location};
 
-use crate::authenticator::{Authenticator, UserPresence};
-use crate::{constants, Result};
+use crate::{
+    authenticator::{Authenticator, UserPresence},
+    constants,
+    Result,
+};
 
 impl<UP, T> Authenticator<UP, T>
 where

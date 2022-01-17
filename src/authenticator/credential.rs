@@ -85,6 +85,8 @@ pub struct CredentialData {
     // extensions
     pub hmac_secret: Option<bool>,
     pub cred_protect: Option<CredentialProtectionPolicy>,
+    #[cfg(feature = "enable-fido-2-1-pre")]
+    pub large_blob_key: Option<bool>,
     // TODO: add `sig_counter: Option<CounterId>`,
     // and grant RKs a per-credential sig-counter.
 }
@@ -134,6 +136,7 @@ impl Credential {
         timestamp: u32,
         hmac_secret: Option<bool>,
         cred_protect: Option<CredentialProtectionPolicy>,
+        #[cfg(feature = "enable-fido-2-1-pre")] large_blob_key: Option<bool>,
         nonce: [u8; 12],
     ) -> Self {
         info!("credential for algorithm {}", algorithm);
@@ -148,6 +151,8 @@ impl Credential {
 
             hmac_secret,
             cred_protect,
+            #[cfg(feature = "enable-fido-2-1-pre")]
+            large_blob_key,
         };
 
         Credential {

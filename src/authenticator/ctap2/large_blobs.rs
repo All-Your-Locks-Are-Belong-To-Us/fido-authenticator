@@ -1,13 +1,25 @@
+use core::convert::TryFrom;
+
 use ctap2::large_blobs::{Parameters, Response};
 use ctap_types::{
     authenticator::{ctap2, Error},
     Bytes,
     Bytes32,
 };
-use trussed::{client, syscall};
+use trussed::{
+    client,
+    syscall,
+    types::{KeySerialization, Location, Mechanism},
+};
 
 use super::{Authenticator, UserPresence};
-use crate::Result;
+use crate::{
+    authenticator::{
+        credential::{Credential, Key},
+        SupportedAlgorithm,
+    },
+    Result,
+};
 
 impl<UP, T> Authenticator<UP, T>
 where
@@ -156,6 +168,81 @@ where
             })
         } else {
             unreachable!();
+        }
+    }
+
+    /// This function derives a 32 bytes large blob key from a given credential, if large blob key is enabled for that credential.
+    ///
+    /// *Note:* The key is not stored on the authenticator.
+    pub(crate) fn derive_large_blob_key(
+        &mut self,
+        credential: &Credential,
+    ) -> Result<Option<Bytes32>> {
+        let is_credential_with_large_blob_key =
+            credential.large_blob_key.is_some() && credential.large_blob_key.unwrap() == true;
+        match is_credential_with_large_blob_key {
+            false => Ok(None),
+            true => match credential.key {
+                Key::ResidentKey(private_key) => {
+                    // Derive a key from the credentials private key.
+                    // The standard says, that this key may not be derived in another way (e.g. hmac-secret-extension).
+                    // So we chose the HKDF with a input specifically tied to this extension:
+                    // HMAC-SHA256(HMAC-SHA256(extraction salt = "largeBlobKey", crendential private key), CTXinfo || [0])
+                    let large_blob_key_derived_xtr = syscall!(self.trussed.derive_key(
+                        Mechanism::HmacSha256,
+                        private_key,
+                        Some(Bytes::from_slice("largeBlobKey".as_ref()).unwrap()),
+                        trussed::types::StorageAttributes::new()
+                            .set_persistence(Location::Volatile)
+                    ))
+                    .key;
+
+                    // Derive the public key.
+                    let algorithm = SupportedAlgorithm::try_from(credential.algorithm)?;
+                    let serialized_public_key = match algorithm {
+                        SupportedAlgorithm::P256 => {
+                            let public_key = syscall!(self
+                                .trussed
+                                .derive_p256_public_key(private_key, Location::Volatile))
+                            .key;
+                            let serialized_public_key = syscall!(self.trussed.serialize_key(
+                                Mechanism::P256,
+                                public_key,
+                                KeySerialization::Raw,
+                            ))
+                            .serialized_key;
+                            syscall!(self.trussed.delete(public_key));
+                            serialized_public_key
+                        }
+                        SupportedAlgorithm::Ed25519 => {
+                            let public_key = syscall!(self
+                                .trussed
+                                .derive_ed255_public_key(private_key, Location::Volatile))
+                            .key;
+                            let serialized_public_key = syscall!(self
+                                .trussed
+                                .serialize_ed255_key(public_key, KeySerialization::Raw))
+                            .serialized_key;
+                            syscall!(self.trussed.delete(public_key));
+                            serialized_public_key
+                        }
+                        _ => unimplemented!(),
+                    };
+
+                    // Now, sign the context info = public key.
+                    let large_blob_key = syscall!(self
+                        .trussed
+                        .sign_hmacsha256(large_blob_key_derived_xtr, &serialized_public_key))
+                    .signature
+                    .to_bytes()
+                    .unwrap();
+
+                    Ok(Some(large_blob_key))
+                }
+                // Should never happen, as large_blob_key is only set to true during creation
+                // when the key is resident.
+                _ => unreachable!(),
+            },
         }
     }
 }

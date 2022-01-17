@@ -1,8 +1,10 @@
 use ctap_types::{authenticator::Error, operation::VendorOperation};
 use trussed::{client, syscall};
 
-use crate::authenticator::{Authenticator, UserPresence};
-use crate::Result;
+use crate::{
+    authenticator::{Authenticator, UserPresence},
+    Result,
+};
 
 impl<UP, T> Authenticator<UP, T>
 where
