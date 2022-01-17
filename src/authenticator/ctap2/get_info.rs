@@ -2,6 +2,8 @@ use ctap_types::{authenticator::ctap2, Bytes, String, Vec};
 use trussed::client;
 
 use crate::authenticator::{Authenticator, UserPresence};
+#[cfg(feature = "enable-fido-2-1-pre")]
+use crate::state::MAX_SERIALIZED_LARGE_BLOB_ARRAY;
 
 impl<UP, T> Authenticator<UP, T>
 where
@@ -65,6 +67,8 @@ where
             pin_protocols: Some(pin_protocols),
             max_creds_in_list: Some(ctap_types::sizes::MAX_CREDENTIAL_COUNT_IN_LIST),
             max_cred_id_length: Some(ctap_types::sizes::MAX_CREDENTIAL_ID_LENGTH),
+            #[cfg(feature = "enable-fido-2-1-pre")]
+            max_serialized_large_blob_array: Some(MAX_SERIALIZED_LARGE_BLOB_ARRAY),
             ..ctap2::get_info::Response::default()
         }
     }
