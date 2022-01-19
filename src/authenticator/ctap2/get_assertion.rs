@@ -160,6 +160,7 @@ where
         self.assert_with_credential(None, credential)
     }
 
+    #[inline(never)]
     fn assert_with_credential(
         &mut self,
         num_credentials: Option<u32>,

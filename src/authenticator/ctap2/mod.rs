@@ -268,6 +268,7 @@ where
     }
 
     /// Returns whether UV was performed.
+    #[inline(never)]
     fn pin_prechecks(
         &mut self,
         options: &Option<ctap2::AuthenticatorOptions>,

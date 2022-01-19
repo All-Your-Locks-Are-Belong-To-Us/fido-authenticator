@@ -494,6 +494,7 @@ impl RuntimeState {
         }
     }
 
+    #[inline(never)]
     pub fn pop_credential_from_heap<T: client::FilesystemClient>(
         &mut self,
         trussed: &mut T,
