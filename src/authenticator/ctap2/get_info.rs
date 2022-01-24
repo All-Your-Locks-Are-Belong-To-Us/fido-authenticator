@@ -25,7 +25,7 @@ where
             .unwrap();
         #[cfg(feature = "enable-fido-2-1-pre")]
         versions
-            .push(String::from_str("FIDO_2_1_PRE").unwrap())
+            .push(String::from_str("FIDO_2_1").unwrap())
             .unwrap();
 
         let mut extensions = Vec::new();
