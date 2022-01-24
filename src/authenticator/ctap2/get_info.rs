@@ -2,7 +2,7 @@ use ctap_types::{authenticator::ctap2, Bytes, String, Vec};
 use trussed::client;
 
 use crate::authenticator::{Authenticator, UserPresence};
-#[cfg(feature = "enable-fido-2-1-pre")]
+#[cfg(feature = "enable-fido-2-1")]
 use crate::state::MAX_SERIALIZED_LARGE_BLOB_ARRAY;
 
 impl<UP, T> Authenticator<UP, T>
@@ -23,7 +23,7 @@ where
         versions
             .push(String::from_str("FIDO_2_0").unwrap())
             .unwrap();
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         versions
             .push(String::from_str("FIDO_2_1").unwrap())
             .unwrap();
@@ -36,7 +36,7 @@ where
         extensions
             .push(String::from_str("hmac-secret").unwrap())
             .unwrap();
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         {
             extensions
                 .push(String::from_str("largeBlobKey").unwrap())
@@ -57,7 +57,7 @@ where
             true => Some(true),
             false => Some(false),
         };
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         {
             options.large_blobs = Some(true);
         }
@@ -73,7 +73,7 @@ where
             pin_protocols: Some(pin_protocols),
             max_creds_in_list: Some(ctap_types::sizes::MAX_CREDENTIAL_COUNT_IN_LIST),
             max_cred_id_length: Some(ctap_types::sizes::MAX_CREDENTIAL_ID_LENGTH),
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             max_serialized_large_blob_array: Some(MAX_SERIALIZED_LARGE_BLOB_ARRAY),
             ..ctap2::get_info::Response::default()
         }

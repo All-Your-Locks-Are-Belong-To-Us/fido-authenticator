@@ -18,7 +18,7 @@ mod make_credential;
 mod reset;
 mod vendor;
 
-#[cfg(feature = "enable-fido-2-1-pre")]
+#[cfg(feature = "enable-fido-2-1")]
 mod large_blobs;
 
 impl<UP, T> Authenticator<UP, T>
@@ -126,7 +126,7 @@ where
 
                     // 0xC
                     ctap2::Request::LargeBlobs(parameters) => {
-                        #[cfg(feature = "enable-fido-2-1-pre")]
+                        #[cfg(feature = "enable-fido-2-1")]
                         {
                             debug!("LargeBlobs request");
                             let response = self.large_blobs(parameters);
@@ -137,7 +137,7 @@ where
                                 Err(error) => Err(error),
                             }
                         }
-                        #[cfg(not(feature = "enable-fido-2-1-pre"))]
+                        #[cfg(not(feature = "enable-fido-2-1"))]
                         {
                             // to silence clippy.
                             let _parameters = parameters;

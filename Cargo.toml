@@ -20,7 +20,7 @@ ctap-types = { git = "https://github.com/All-Your-Locks-Are-Belong-To-Us/ctap-ty
 trussed = { git = "https://github.com/trussed-dev/trussed" }
 
 [features]
-enable-fido-2-1-pre = []
+enable-fido-2-1 = []
 
 disable-reset-time-window = []
 

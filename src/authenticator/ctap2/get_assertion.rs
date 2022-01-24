@@ -195,7 +195,7 @@ where
 
         // 8. process any extensions present
         let mut extensions_output = None;
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         let mut large_blob_key_output = None;
         if let Some(extensions) = &data.extensions {
             extensions_output =
@@ -205,7 +205,7 @@ where
             // Hence, we process the largeBlobKeyExtension separately. We could instead return the largeBlobKey as a second return value
             // from the process_assertion_extensions. However, we thought this is not a good design.
             // See https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#sctn-largeBlobKey-extension
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             {
                 large_blob_key_output =
                     self.process_large_blob_key_extension(extensions, &credential)?;
@@ -296,9 +296,9 @@ where
             number_of_credentials: num_credentials,
             // TODO: implement
             user_selected: None,
-            #[cfg(not(feature = "enable-fido-2-1-pre"))]
+            #[cfg(not(feature = "enable-fido-2-1"))]
             large_blob_key: None,
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             large_blob_key: large_blob_key_output,
         };
 
@@ -412,7 +412,7 @@ where
     }
 
     #[inline(never)]
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     fn process_large_blob_key_extension(
         &mut self,
         extensions: &ctap2::get_assertion::ExtensionsInput,

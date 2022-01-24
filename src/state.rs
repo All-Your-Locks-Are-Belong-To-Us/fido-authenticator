@@ -159,11 +159,11 @@ pub struct ActiveGetAssertionData {
     pub extensions: Option<ctap_types::ctap2::get_assertion::ExtensionsInput>,
 }
 
-#[cfg(feature = "enable-fido-2-1-pre")]
+#[cfg(feature = "enable-fido-2-1")]
 /// The maximum number of bytes that this authenticator can store in its large blob array.
 /// The minimum number is 1024 bytes, we chose 16 KiB arbitrarily.
 pub const MAX_SERIALIZED_LARGE_BLOB_ARRAY: usize = 1024;
-#[cfg(feature = "enable-fido-2-1-pre")]
+#[cfg(feature = "enable-fido-2-1")]
 pub type LargeBlob = Bytes<MAX_SERIALIZED_LARGE_BLOB_ARRAY>;
 
 #[derive(
@@ -183,11 +183,11 @@ pub struct RuntimeState {
     pub cache_rp: Option<CredentialManagementEnumerateRps>,
     pub cache_rk: Option<CredentialManagementEnumerateCredentials>,
 
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     pub large_blob_expected_length: usize,
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     pub large_blob_expected_next_offset: u32,
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     pub large_blob_buffer: LargeBlob,
 }
 
@@ -225,7 +225,7 @@ pub struct PersistentState {
 
     // seems like we break some stuff here, as the Solo won't boot up properly :(
     // DON'T FLASH IT IN THIS STATE
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     large_blob_buffer: Option<LargeBlob>,
 }
 
@@ -234,7 +234,7 @@ impl PersistentState {
     const FILENAME: &'static [u8] = b"persistent-state.cbor";
     const MAX_RESIDENT_CREDENTIALS_GUESSTIMATE: u32 = 100;
 
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     /// The initial serialized large blob array as defined by the FIDO standard 2.1
     /// https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#authenticatorLargeBlobs
     const INITIAL_SERIALIZED_LARGE_BLOB_ARRAY: [u8; 17] = [
@@ -294,7 +294,7 @@ impl PersistentState {
         self.consecutive_pin_mismatches = 0;
         self.pin_hash = None;
         self.timestamp = 0;
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         {
             self.large_blob_buffer = None;
         }
@@ -419,7 +419,7 @@ impl PersistentState {
         Ok(())
     }
 
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     pub fn large_blob(&self) -> &[u8] {
         match &self.large_blob_buffer {
             Some(large_blob_buffer) => large_blob_buffer.as_slice(),
@@ -427,7 +427,7 @@ impl PersistentState {
         }
     }
 
-    #[cfg(feature = "enable-fido-2-1-pre")]
+    #[cfg(feature = "enable-fido-2-1")]
     pub fn set_large_blob<T: TrussedClient>(
         &mut self,
         trussed: &mut T,

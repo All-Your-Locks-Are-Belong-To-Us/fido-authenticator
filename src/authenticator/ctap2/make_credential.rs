@@ -130,7 +130,7 @@ where
         let mut hmac_secret_requested = None;
         // let mut cred_protect_requested = CredentialProtectionPolicy::Optional;
         let mut cred_protect_requested = None;
-        #[cfg(feature = "enable-fido-2-1-pre")]
+        #[cfg(feature = "enable-fido-2-1")]
         let mut large_blob_key_requested = None;
         if let Some(extensions) = &parameters.extensions {
             hmac_secret_requested = extensions.hmac_secret;
@@ -139,7 +139,7 @@ where
                 cred_protect_requested = Some(CredentialProtectionPolicy::try_from(*policy)?);
             }
 
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             {
                 large_blob_key_requested = extensions.large_blob_key;
                 // See https://fidoalliance.org/specs/fido-v2.1-ps-20210615/fido-client-to-authenticator-protocol-v2.1-ps-20210615.html#sctn-largeBlobKey-extension
@@ -262,7 +262,7 @@ where
             self.state.persistent.timestamp(&mut self.trussed)?,
             hmac_secret_requested,
             cred_protect_requested,
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             large_blob_key_requested,
             nonce,
         );
@@ -319,7 +319,7 @@ where
                 if hmac_secret_requested.is_some() || cred_protect_requested.is_some() {
                     flags |= Flags::EXTENSION_DATA;
                 }
-                #[cfg(feature = "enable-fido-2-1-pre")]
+                #[cfg(feature = "enable-fido-2-1")]
                 if large_blob_key_requested.is_some() {
                     flags |= Flags::EXTENSION_DATA
                 }
@@ -342,7 +342,7 @@ where
             extensions: {
                 let mut extensions_set =
                     hmac_secret_requested.is_some() || cred_protect_requested.is_some();
-                #[cfg(feature = "enable-fido-2-1-pre")]
+                #[cfg(feature = "enable-fido-2-1")]
                 {
                     extensions_set |= large_blob_key_requested.is_some();
                 }
@@ -463,9 +463,9 @@ where
             att_stmt,
             // TODO: Implement enterprise attestation.
             ep_att: None,
-            #[cfg(feature = "enable-fido-2-1-pre")]
+            #[cfg(feature = "enable-fido-2-1")]
             large_blob_key: self.derive_large_blob_key(&credential)?,
-            #[cfg(not(feature = "enable-fido-2-1-pre"))]
+            #[cfg(not(feature = "enable-fido-2-1"))]
             large_blob_key: None,
         };
 
