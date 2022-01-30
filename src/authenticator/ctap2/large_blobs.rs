@@ -3,6 +3,7 @@ use core::convert::TryFrom;
 use ctap2::large_blobs::{Parameters, Response};
 use ctap_types::{
     authenticator::{ctap2, Error},
+    sizes::LARGE_BLOB_MAX_FRAGMENT_LENGTH,
     Bytes,
     Bytes32,
 };
@@ -119,7 +120,17 @@ where
                 return Err(Error::InvalidSeq);
             }
 
-            // TODO: 5.5. pin auth
+            // 5.5. pin auth if pin is set
+            // TODO: perform pin check if always UV is set as well (alwaysUV is not implemented yet)
+            if self.state.persistent.pin_is_set() {
+                let data = self.construct_large_blob_pin_data(parameters.offset, write_bytes)?;
+                self.perform_pin_auth(
+                    &parameters.pin_uv_auth_param,
+                    &parameters.pin_uv_auth_protocol,
+                    data.as_slice(),
+                )?;
+                // TODO: 5.5.5: Check if pinAuthUvToken has the lbw permission set (permissions are currently not implemented)
+            }
 
             // 5.6. We do not want to overshoot.
             if byte_len + parameters.offset as usize > self.state.runtime.large_blob_expected_length
@@ -169,6 +180,40 @@ where
         } else {
             unreachable!();
         }
+    }
+
+    fn construct_large_blob_pin_data(
+        &mut self,
+        offset: u32,
+        write_bytes: &Bytes<LARGE_BLOB_MAX_FRAGMENT_LENGTH>,
+    ) -> Result<Bytes<70>> {
+        let mut large_blob_pin_data = Bytes::<70>::new();
+
+        // 32×0xff || h’0c00'
+        const PREFIX: [u8; 34] = [
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0xff, 0xff, 0x0c, 0x00,
+        ];
+        large_blob_pin_data
+            .extend_from_slice(&PREFIX[..])
+            .map_err(|_| Error::Other)?;
+
+        // uint32LittleEndian(offset)
+        large_blob_pin_data
+            .extend_from_slice(&offset.to_le_bytes())
+            .map_err(|_| Error::Other)?;
+
+        // SHA-256(contents of set byte string, i.e. not including an outer CBOR tag with major type two)
+        let set_content_hash: Bytes32 = syscall!(self.trussed.hash_sha256(write_bytes))
+            .hash
+            .to_bytes()
+            .map_err(|_| Error::Other)?;
+        large_blob_pin_data
+            .extend_from_slice(&set_content_hash)
+            .map_err(|_| Error::Other)?;
+
+        Ok(large_blob_pin_data)
     }
 
     /// This function derives a 32 bytes large blob key from a given credential, if large blob key is enabled for that credential.

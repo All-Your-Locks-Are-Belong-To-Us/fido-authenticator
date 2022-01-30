@@ -267,6 +267,45 @@ where
         }
     }
 
+    #[inline(never)]
+    fn perform_pin_auth(
+        &mut self,
+        pin_auth: &Option<ctap2::PinAuth>,
+        pin_protocol: &Option<u32>,
+        data: &[u8],
+    ) -> Result<bool> {
+        // let mut uv_performed = false;
+        if let Some(ref pin_auth) = pin_auth {
+            if pin_auth.len() != 16 {
+                return Err(Error::InvalidParameter);
+            }
+            // seems a bit redundant to check here in light of 2.
+            // I guess the CTAP spec writers aren't implementers :D
+            if let Some(1) = pin_protocol {
+                // 5. if pinAuth is present and pinProtocol = 1, verify
+                // success --> set uv = 1
+                // error --> PinAuthInvalid
+                self.verify_pin(
+                    // unwrap panic ruled out above
+                    pin_auth.as_slice().try_into().unwrap(),
+                    data,
+                )?;
+
+                return Ok(true);
+            } else {
+                // 7. pinAuth present + pinProtocol != 1 --> error PinAuthInvalid
+                return Err(Error::PinAuthInvalid);
+            }
+        } else {
+            // 6. pinAuth not present + clientPin set --> error PinRequired
+            if self.state.persistent.pin_is_set() {
+                return Err(Error::PinRequired);
+            }
+        }
+
+        Ok(false)
+    }
+
     /// Returns whether UV was performed.
     #[inline(never)]
     fn pin_prechecks(
@@ -319,37 +358,10 @@ where
         // TODO: Should we should fail if `uv` is passed?
         // Current thinking: no
         if self.state.persistent.pin_is_set() {
-            // let mut uv_performed = false;
-            if let Some(ref pin_auth) = pin_auth {
-                if pin_auth.len() != 16 {
-                    return Err(Error::InvalidParameter);
-                }
-                // seems a bit redundant to check here in light of 2.
-                // I guess the CTAP spec writers aren't implementers :D
-                if let Some(1) = pin_protocol {
-                    // 5. if pinAuth is present and pinProtocol = 1, verify
-                    // success --> set uv = 1
-                    // error --> PinAuthInvalid
-                    self.verify_pin(
-                        // unwrap panic ruled out above
-                        pin_auth.as_slice().try_into().unwrap(),
-                        data,
-                    )?;
-
-                    return Ok(true);
-                } else {
-                    // 7. pinAuth present + pinProtocol != 1 --> error PinAuthInvalid
-                    return Err(Error::PinAuthInvalid);
-                }
-            } else {
-                // 6. pinAuth not present + clientPin set --> error PinRequired
-                if self.state.persistent.pin_is_set() {
-                    return Err(Error::PinRequired);
-                }
-            }
+            self.perform_pin_auth(pin_auth, pin_protocol, data)
+        } else {
+            Ok(false)
         }
-
-        Ok(false)
     }
 }
 
